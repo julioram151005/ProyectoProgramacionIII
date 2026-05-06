@@ -1,9 +1,8 @@
 ﻿using Microsoft.AspNetCore.Mvc;
-using Microsoft.Extensions.Options;
+using Microsoft.EntityFrameworkCore;
+using ProyectoProgramacionIII.Data;
 using ProyectoProgramacionIII.Models;
-using SharpCompress.Archives;
-using SharpCompress.Common;
-using SharpCompress.Writers;
+using System.Security.Cryptography;
 
 namespace ProyectoProgramacionIII.Controllers;
 
@@ -11,195 +10,135 @@ namespace ProyectoProgramacionIII.Controllers;
 [Route("api/[controller]")]
 public class ArchiveController : ControllerBase
 {
-    private readonly string _baseDir;
+    private readonly AppDbContext _context;
 
-    public ArchiveController(IOptions<ArchiveSettings> settings)
+    public ArchiveController(AppDbContext context)
     {
-        _baseDir = Path.GetFullPath(settings.Value.BaseDirectory);
-        if (!Directory.Exists(_baseDir))
-            Directory.CreateDirectory(_baseDir);
+        _context = context;
     }
 
-    // READY: Subir archivo comprimido
+    // 📤 SUBIR archivo (almacena en BD como BYTEA)
     [HttpPost("upload")]
     public async Task<IActionResult> Upload(IFormFile file)
     {
         Check.FileUpload(file);
 
-        var fullPath = Path.Combine(_baseDir, file!.FileName);
-        using (var stream = new FileStream(fullPath, FileMode.Create))
-            await file.CopyToAsync(stream);
+        // Leer el archivo como bytes
+        using var memoryStream = new MemoryStream();
+        await file.CopyToAsync(memoryStream);
+        var contenido = memoryStream.ToArray();
 
-        return Ok(new { message = "Archivo subido correctamente", path = fullPath });
+        // Calcular MD5
+        var hash = MD5.HashData(contenido);
+        var hashString = BitConverter.ToString(hash).Replace("-", "").ToLowerInvariant();
+
+        // Guardar en la base de datos
+        var archivo = new Archivo
+        {
+            NombreOriginal = file.FileName,
+            Contenido = contenido,
+            HashMd5 = hashString,
+            TamanoBytes = file.Length,
+            TipoMime = file.ContentType ?? "application/zip"
+        };
+
+        _context.Archivos.Add(archivo);
+        await _context.SaveChangesAsync();
+
+        return Ok(new
+        {
+            message = "Archivo subido correctamente",
+            id = archivo.Id,
+            nombre = archivo.NombreOriginal,
+            tamano = archivo.TamanoBytes,
+            hash = archivo.HashMd5
+        });
     }
 
-    // READY: Listar contenidos
-    [HttpGet("contents")]
-    public IActionResult GetContents(string fileName)
-    {
-        if (string.IsNullOrEmpty(fileName))
-            return BadRequest("Debe indicar el nombre del archivo");
-
-        var fullPath = Path.Combine(_baseDir, fileName);
-        if (!System.IO.File.Exists(fullPath))
-            return NotFound("El archivo no existe");
-
-        try
-        {
-            using var archive = ArchiveFactory.OpenArchive(fullPath);
-            var entries = archive.Entries
-                .Where(e => !e.IsDirectory)
-                .Select(e => new
-                {
-                    e.Key,
-                    Size = e.Size,
-                    CompressedSize = e.CompressedSize,
-                    LastModified = e.LastModifiedTime
-                })
-                .ToList();
-
-            return Ok(entries);
-        }
-        catch (Exception ex)
-        {
-            return StatusCode(500, $"Error al leer el archivo: {ex.Message}");
-        }
-    }
-
-    // READY: Extraer archivo comprimido usando WriteToDirectory
-    [HttpPost("extract")]
-    public IActionResult Extract(string fileName, string? outputFolder = null)
-    {
-        if (string.IsNullOrEmpty(fileName))
-            return BadRequest("Debe indicar el nombre del archivo");
-
-        var archivePath = Path.Combine(_baseDir, fileName);
-        if (!System.IO.File.Exists(archivePath))
-            return NotFound("El archivo no existe");
-
-        var extractDir = string.IsNullOrEmpty(outputFolder)
-            ? Path.Combine(_baseDir, Path.GetFileNameWithoutExtension(fileName))
-            : Path.Combine(_baseDir, outputFolder);
-
-        try
-        {
-            using var archive = ArchiveFactory.OpenArchive(archivePath);
-            // ✅ CORRECCIÓN: Usar WriteToDirectory en lugar de ExtractToDirectory
-            archive.WriteToDirectory(extractDir, new ExtractionOptions()
-            {
-                ExtractFullPath = true,
-                Overwrite = true
-            });
-
-            return Ok(new { message = "Extracción completada", destination = extractDir });
-        }
-        catch (Exception ex)
-        {
-            return StatusCode(500, $"Error al extraer: {ex.Message}");
-        }
-    }
-
-    // READY: Comprimir a ZIP
-    [HttpPost("compress")]
-    public IActionResult Compress(string sourcePath, string zipName)
-    {
-        if (string.IsNullOrEmpty(sourcePath) || string.IsNullOrEmpty(zipName))
-            return BadRequest("Debe indicar sourcePath y zipName");
-
-        var sourceFull = Path.Combine(_baseDir, sourcePath);
-        if (!Directory.Exists(sourceFull) && !System.IO.File.Exists(sourceFull))
-            return NotFound("El origen no existe");
-
-        if (!zipName.EndsWith(".zip", StringComparison.OrdinalIgnoreCase))
-            zipName += ".zip";
-
-        var zipFull = Path.Combine(_baseDir, zipName);
-
-        try
-        {
-            using var stream = System.IO.File.OpenWrite(zipFull);
-            // ✅ CORRECCIÓN: Usar WriterFactory.Open con los parámetros correctos
-            using var writer = WriterFactory.OpenWriter(stream, ArchiveType.Zip, new WriterOptions(CompressionType.Deflate));
-            if (Directory.Exists(sourceFull))
-                writer.WriteAll(sourceFull, "*", SearchOption.AllDirectories);
-            else
-                writer.Write(Path.GetFileName(sourceFull), sourceFull);
-
-            return Ok(new { message = "Compresión completada", zipPath = zipFull });
-        }
-        catch (Exception ex)
-        {
-            return StatusCode(500, $"Error al comprimir: {ex.Message}");
-        }
-    }
-
-    // READY: Método estándar para descarga... sin cambios
-    [HttpGet("download")]
-    public IActionResult Download(string filePath)
-    {
-        try
-        {
-            var fullPath = GetSafePath(filePath);
-            if (!System.IO.File.Exists(fullPath))
-                return NotFound();
-            return PhysicalFile(fullPath, "application/octet-stream", Path.GetFileName(fullPath));
-        }
-        catch (UnauthorizedAccessException)
-        {
-            return Forbid();
-        }
-    }
-
-    // READY: Eliminar archivo o carpeta
-    [HttpDelete("delete")]
-    public IActionResult Delete(string path)
-    {
-        if (string.IsNullOrEmpty(path))
-            return BadRequest("Debe indicar la ruta relativa");
-
-        var fullPath = Path.Combine(_baseDir, path);
-        if (!System.IO.File.Exists(fullPath) && !Directory.Exists(fullPath))
-            return NotFound("El elemento no existe");
-
-        try
-        {
-            if (Directory.Exists(fullPath))
-                Directory.Delete(fullPath, recursive: true);
-            else
-                System.IO.File.Delete(fullPath);
-
-            return Ok(new { message = "Elemento eliminado correctamente" });
-        }
-        catch (Exception ex)
-        {
-            return StatusCode(500, $"Error al eliminar: {ex.Message}");
-        }
-    }
-
-    // READY: Listar archivos
+    // 📋 LISTAR archivos (solo metadatos, sin contenido)
     [HttpGet("list")]
-    public IActionResult ListFiles()
+    public async Task<IActionResult> ListFiles()
     {
-        var items = Directory.GetFileSystemEntries(_baseDir)
-            .Select(entry => new
-            {
-                Name = Path.GetRelativePath(_baseDir, entry),
-                IsDirectory = Directory.Exists(entry),
-                FullPath = entry
-            });
-        return Ok(items);
+        var archivos = await _context.Archivos
+            .Select(a => new {
+                a.Id,
+                a.NombreOriginal,
+                a.TamanoBytes,
+                a.HashMd5,
+                a.TipoMime,
+                a.FechaSubida
+            })
+            .ToListAsync();
+
+        return Ok(archivos);
     }
 
-    private string GetSafePath(string relativePath)
+    // 📥 DESCARGAR archivo por ID
+    [HttpGet("download/{id}")]
+    public async Task<IActionResult> Download(int id)
     {
-        var full = Path.GetFullPath(Path.Combine(_baseDir, relativePath));
-        if (!full.StartsWith(_baseDir, StringComparison.OrdinalIgnoreCase))
-            throw new UnauthorizedAccessException("Acceso fuera del directorio permitido");
-        return full;
+        var archivo = await _context.Archivos.FindAsync(id);
+        if (archivo == null)
+            return NotFound("Archivo no encontrado");
+
+        return File(archivo.Contenido, archivo.TipoMime, archivo.NombreOriginal);
+    }
+
+    // 🗑️ ELIMINAR archivo
+    [HttpDelete("delete/{id}")]
+    public async Task<IActionResult> Delete(int id)
+    {
+        var archivo = await _context.Archivos.FindAsync(id);
+        if (archivo == null)
+            return NotFound("Archivo no encontrado");
+
+        _context.Archivos.Remove(archivo);
+        await _context.SaveChangesAsync();
+
+        return Ok(new { message = "Archivo eliminado correctamente" });
+    }
+
+    // 🔍 OBTENER información de un archivo
+    [HttpGet("info/{id}")]
+    public async Task<IActionResult> GetInfo(int id)
+    {
+        var archivo = await _context.Archivos
+            .Where(a => a.Id == id)
+            .Select(a => new { a.Id, a.NombreOriginal, a.TamanoBytes, a.HashMd5, a.TipoMime, a.FechaSubida })
+            .FirstOrDefaultAsync();
+
+        if (archivo == null)
+            return NotFound("Archivo no encontrado");
+
+        return Ok(archivo);
+    }
+
+    [HttpGet("test-db")]
+    public async Task<IActionResult> TestDatabase()
+    {
+        try
+        {
+            // Probar conexión
+            var canConnect = await _context.Database.CanConnectAsync();
+
+            // Contar archivos
+            var count = await _context.Archivos.CountAsync();
+
+            return Ok(new
+            {
+                connected = canConnect,
+                archivosCount = count,
+                message = "Conexión exitosa a Neon.tech"
+            });
+        }
+        catch (Exception ex)
+        {
+            return BadRequest(new { error = ex.Message });
+        }
     }
 }
 
-// Clase auxiliar static para validaciones repetitivas
+// Clase auxiliar para validaciones
 public static class Check
 {
     public static void FileUpload(IFormFile file)
@@ -210,5 +149,8 @@ public static class Check
         var extension = Path.GetExtension(file.FileName).ToLower();
         if (extension != ".zip" && extension != ".rar")
             throw new ArgumentException("Solo se permiten archivos .zip o .rar");
+
+        if (file.Length > 100 * 1024 * 1024) // 100 MB
+            throw new ArgumentException("El archivo no puede superar los 100 MB");
     }
 }
