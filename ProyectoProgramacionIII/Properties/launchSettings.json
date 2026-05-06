@@ -18,6 +18,9 @@
       "environmentVariables": {
         "ASPNETCORE_ENVIRONMENT": "Development"
       }
+    },
+    "ArchiveSettings": {
+      "BaseDirectory": "Archivos"
     }
   }
 }
