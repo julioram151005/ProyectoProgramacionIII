@@ -11,7 +11,7 @@ namespace ProyectoProgramacionIII.Controllers;
 public class ArchiveController : ControllerBase
 {
     private readonly AppDbContext _context;
-
+                private static ArbolBinario arbolArchivos = new ArbolBinario();
     public ArchiveController(AppDbContext context)
     {
         _context = context;
@@ -23,7 +23,6 @@ public class ArchiveController : ControllerBase
     {
         Check.FileUpload(file);
 
-        // Leer el archivo como bytes
         using var memoryStream = new MemoryStream();
         await file.CopyToAsync(memoryStream);
         var contenido = memoryStream.ToArray();
