@@ -21,4 +21,6 @@
     <Folder Include="Services\" />
   </ItemGroup>
 
+  <ProjectExtensions><VisualStudio><UserProperties properties_4appsettings_1json__JsonSchema="https://www.schemastore.org/azure-deviceupdate-import-manifest-5.0.json" /></VisualStudio></ProjectExtensions>
+
 </Project>

@@ -11,7 +11,8 @@ namespace ProyectoProgramacionIII.Controllers;
 public class ArchiveController : ControllerBase
 {
     private readonly AppDbContext _context;
-                private static ArbolBinario arbolArchivos = new ArbolBinario();
+    private static ArbolBinario arbolArchivos = new ArbolBinario();
+
     public ArchiveController(AppDbContext context)
     {
         _context = context;
@@ -27,11 +28,9 @@ public class ArchiveController : ControllerBase
         await file.CopyToAsync(memoryStream);
         var contenido = memoryStream.ToArray();
 
-        // Calcular MD5
         var hash = MD5.HashData(contenido);
         var hashString = BitConverter.ToString(hash).Replace("-", "").ToLowerInvariant();
 
-        // Guardar en la base de datos
         var archivo = new Archivo
         {
             NombreOriginal = file.FileName,
@@ -117,10 +116,7 @@ public class ArchiveController : ControllerBase
     {
         try
         {
-            // Probar conexión
             var canConnect = await _context.Database.CanConnectAsync();
-
-            // Contar archivos
             var count = await _context.Archivos.CountAsync();
 
             return Ok(new
@@ -135,9 +131,123 @@ public class ArchiveController : ControllerBase
             return BadRequest(new { error = ex.Message });
         }
     }
+
+    // Método privado para cargar el árbol desde la base de datos
+    private async Task CargarArbolDesdeBD()
+    {
+        arbolArchivos = new ArbolBinario();
+
+        var ids = await _context.Archivos
+            .OrderBy(a => a.Id)
+            .Select(a => a.Id)
+            .ToListAsync();
+
+        foreach (var id in ids)
+        {
+            arbolArchivos.Insertar(id);
+        }
+    }
+
+    // 🌳 RECORRIDOS DEL ÁRBOL (devuelven datos reales de la BD)
+    [HttpGet("arbol/preorden")]
+    public async Task<IActionResult> RecorridoPreOrden()
+    {
+        await CargarArbolDesdeBD();
+
+        var idsRecorrido = arbolArchivos.PreOrden();
+        var archivosDict = await _context.Archivos
+            .Where(a => idsRecorrido.Contains(a.Id))
+            .ToDictionaryAsync(a => a.Id);
+
+        var resultado = idsRecorrido
+            .Select(id => archivosDict[id])
+            .Select(a => new
+            {
+                a.Id,
+                a.NombreOriginal,
+                a.TamanoBytes,
+                a.HashMd5,
+                a.TipoMime,
+                a.FechaSubida
+            })
+            .ToList();
+
+        return Ok(new { recorrido = "PreOrden", archivos = resultado });
+    }
+
+    [HttpGet("arbol/inorden")]
+    public async Task<IActionResult> RecorridoInOrden()
+    {
+        await CargarArbolDesdeBD();
+
+        var idsRecorrido = arbolArchivos.InOrden();
+        var archivosDict = await _context.Archivos
+            .Where(a => idsRecorrido.Contains(a.Id))
+            .ToDictionaryAsync(a => a.Id);
+
+        var resultado = idsRecorrido
+            .Select(id => archivosDict[id])
+            .Select(a => new
+            {
+                a.Id,
+                a.NombreOriginal,
+                a.TamanoBytes,
+                a.HashMd5,
+                a.TipoMime,
+                a.FechaSubida
+            })
+            .ToList();
+
+        return Ok(new { recorrido = "InOrden", archivos = resultado });
+    }
+
+    [HttpGet("arbol/postorden")]
+    public async Task<IActionResult> RecorridoPostOrden()
+    {
+        await CargarArbolDesdeBD();
+
+        var idsRecorrido = arbolArchivos.PostOrden();
+        var archivosDict = await _context.Archivos
+            .Where(a => idsRecorrido.Contains(a.Id))
+            .ToDictionaryAsync(a => a.Id);
+
+        var resultado = idsRecorrido
+            .Select(id => archivosDict[id])
+            .Select(a => new
+            {
+                a.Id,
+                a.NombreOriginal,
+                a.TamanoBytes,
+                a.HashMd5,
+                a.TipoMime,
+                a.FechaSubida
+            })
+            .ToList();
+
+        return Ok(new { recorrido = "PostOrden", archivos = resultado });
+    }
+    [HttpDelete("arbol/eliminar/{id}")]
+    public IActionResult EliminarDelArbol(int id)
+    {
+        // Verificar si el valor existe en el árbol (opcional, pero útil)
+        var recorrido = arbolArchivos.InOrden(); // o cualquier método
+        if (!recorrido.Contains(id))
+            return NotFound(new { message = $"El ID {id} no está en el árbol." });
+
+        arbolArchivos.Eliminar(id);
+        return Ok(new { message = $"ID {id} eliminado del árbol." });
+    }
+
+    // (Opcional) Endpoint manual para insertar un ID en el árbol (pruebas)
+    [HttpPost("arbol/insertar/{id}")]
+    public IActionResult InsertarEnArbol(int id)
+    {
+        arbolArchivos.Insertar(id);
+        return Ok(new { message = $"ID {id} insertado en el árbol" });
+    }
 }
 
-// Clase auxiliar para validaciones
+// Clase auxiliar para validaciones (sin cambios)
 public static class Check
 {
     public static void FileUpload(IFormFile file)
