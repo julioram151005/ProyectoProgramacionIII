@@ -3,6 +3,7 @@ using Microsoft.EntityFrameworkCore;
 using ProyectoProgramacionIII.Data;
 using ProyectoProgramacionIII.Models;
 using System.Security.Cryptography;
+using static ProyectoProgramacionIII.Models.EstructurasLineales;
 
 namespace ProyectoProgramacionIII.Controllers;
 
@@ -12,6 +13,9 @@ public class ArchiveController : ControllerBase
 {
     private readonly AppDbContext _context;
     private static ArbolBinario arbolArchivos = new ArbolBinario();
+    private static PilaHistorial historial = new PilaHistorial();
+    private static ColaDescargas colaDescargas = new ColaDescargas();
+    private static TablaHash tablaHash = new TablaHash();
 
     public ArchiveController(AppDbContext context)
     {
@@ -42,7 +46,7 @@ public class ArchiveController : ControllerBase
 
         _context.Archivos.Add(archivo);
         await _context.SaveChangesAsync();
-
+        tablaHash.Insertar(file.FileName, archivo.Id.ToString());
         return Ok(new
         {
             message = "Archivo subido correctamente",
@@ -90,6 +94,8 @@ public class ArchiveController : ControllerBase
         if (archivo == null)
             return NotFound("Archivo no encontrado");
 
+        _context.Archivos.Remove(archivo);
+        tablaHash.Eliminar(archivo.NombreOriginal);
         _context.Archivos.Remove(archivo);
         await _context.SaveChangesAsync();
 
@@ -244,6 +250,117 @@ public class ArchiveController : ControllerBase
     {
         arbolArchivos.Insertar(id);
         return Ok(new { message = $"ID {id} insertado en el árbol" });
+    }
+    // --- Pila: Historial de acciones ---
+
+    [HttpPost("pila/push")]
+    public IActionResult PushHistorial([FromBody] AccionRequest request)
+    {
+        if (string.IsNullOrWhiteSpace(request.Accion))
+            return BadRequest("La acción no puede estar vacía.");
+
+        historial.Push(request.Accion);
+        return Ok(new { message = "Acción agregada al historial.", accion = request.Accion });
+    }
+
+    [HttpGet("pila/pop")]
+    public IActionResult PopHistorial()
+    {
+        try
+        {
+            string accion = historial.Pop();
+            return Ok(new { accion, message = "Acción extraída del historial." });
+        }
+        catch (InvalidOperationException ex)
+        {
+            return BadRequest(new { error = ex.Message });
+        }
+    }
+
+    [HttpGet("pila/peek")]
+    public IActionResult PeekHistorial()
+    {
+        try
+        {
+            string accion = historial.Peek();
+            return Ok(new { accion });
+        }
+        catch (InvalidOperationException ex)
+        {
+            return BadRequest(new { error = ex.Message });
+        }
+    }
+    // --- Cola: Gestión de descargas ---
+
+    [HttpPost("cola/enqueue")]
+    public IActionResult EnqueueDescarga([FromBody] DescargaRequest request)
+    {
+        // Validar que el archivo existe en la BD (opcional pero recomendado)
+        var archivoExiste = _context.Archivos.Any(a => a.Id == request.IdArchivo);
+        if (!archivoExiste)
+            return NotFound(new { error = $"No se encontró un archivo con ID {request.IdArchivo}" });
+
+        colaDescargas.Enqueue(request.IdArchivo);
+        return Ok(new { message = $"Archivo {request.IdArchivo} encolado para descarga." });
+    }
+
+    [HttpGet("cola/dequeue")]
+    public IActionResult DequeueDescarga()
+    {
+        try
+        {
+            int id = colaDescargas.Dequeue();
+            return Ok(new { idArchivo = id, message = "Elemento desencolado." });
+        }
+        catch (InvalidOperationException ex)
+        {
+            return BadRequest(new { error = ex.Message });
+        }
+    }
+
+    [HttpGet("cola/peek")]
+    public IActionResult PeekDescarga()
+    {
+        try
+        {
+            int id = colaDescargas.Peek();
+            return Ok(new { idArchivo = id });
+        }
+        catch (InvalidOperationException ex)
+        {
+            return BadRequest(new { error = ex.Message });
+        }
+    }
+    // --- Tabla Hash (diccionario clave-valor) ---
+
+    [HttpPost("hash/insertar")]
+    public IActionResult InsertarHash([FromBody] HashEntryRequest request)
+    {
+        if (string.IsNullOrWhiteSpace(request.Clave) || string.IsNullOrWhiteSpace(request.Valor))
+            return BadRequest("La clave y el valor son obligatorios.");
+
+        tablaHash.Insertar(request.Clave, request.Valor);
+        return Ok(new { message = "Entrada insertada/actualizada.", clave = request.Clave, valor = request.Valor });
+    }
+
+    [HttpGet("hash/buscar")]
+    public IActionResult BuscarHash([FromQuery] string clave)
+    {
+        string valor = tablaHash.Buscar(clave);
+        if (valor == null)
+            return NotFound(new { error = $"No se encontró la clave '{clave}'." });
+
+        return Ok(new { clave, valor });
+    }
+
+    [HttpDelete("hash/eliminar")]
+    public IActionResult EliminarHash([FromQuery] string clave)
+    {
+        bool eliminado = tablaHash.Eliminar(clave);
+        if (!eliminado)
+            return NotFound(new { error = $"No se encontró la clave '{clave}' para eliminar." });
+
+        return Ok(new { message = $"Clave '{clave}' eliminada." });
     }
 }
 

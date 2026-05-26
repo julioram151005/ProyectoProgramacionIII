@@ -37,14 +37,13 @@ using (var scope = app.Services.CreateScope())
     {
         bool canConnect = dbContext.Database.CanConnectAsync().GetAwaiter().GetResult();
         Console.WriteLine("✅ Conexión exitosa a Neon.tech!");
-
-        // Verificar si la tabla existe
-        var hasTable = dbContext.Database.ExecuteSqlRaw("SELECT 1 FROM \"Archivos\" LIMIT 1") > 0;
-        Console.WriteLine($"📋 Tabla Archivos: {(hasTable ? "Existe" : "No existe")}");
+        int count = dbContext.Archivos.Count();
+        Console.WriteLine($"📋 Tabla Archivos: Existe (registros: {count})");
     }
     catch (Exception ex)
     {
-        Console.WriteLine($"❌ Error de conexión: {ex.Message}");
+        Console.WriteLine($"❌ Error: {ex.Message}");
+        Console.WriteLine("📋 Posiblemente la tabla Archivos no existe.");
     }
 }
 
