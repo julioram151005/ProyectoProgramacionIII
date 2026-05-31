@@ -1,4 +1,4 @@
-﻿using Microsoft.AspNetCore.Mvc;
+using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 using ProyectoProgramacionIII.Data;
 using ProyectoProgramacionIII.Models;
@@ -94,7 +94,6 @@ public class ArchiveController : ControllerBase
         if (archivo == null)
             return NotFound("Archivo no encontrado");
 
-        _context.Archivos.Remove(archivo);
         tablaHash.Eliminar(archivo.NombreOriginal);
         _context.Archivos.Remove(archivo);
         await _context.SaveChangesAsync();

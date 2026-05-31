@@ -1,8 +1,161 @@
-﻿@{
-    ViewData["Title"] = "Home Page";
+@{
+    ViewData["Title"] = "Tienda de Archivos";
 }
 
-<div class="text-center">
-    <h1 class="display-4">Welcome</h1>
-    <p>Learn about <a href="https://learn.microsoft.com/aspnet/core">building Web apps with ASP.NET Core</a>.</p>
+<div class="app-shell">
+    <aside class="sidebar">
+        <div class="brand">
+            <span class="logo">▣</span>
+            <div>
+                <strong>Tienda de<br />Archivos</strong>
+                <small>Tu espacio, tus archivos</small>
+            </div>
+        </div>
+
+        <nav class="menu">
+            <button class="nav-link active" data-section="inicio">⌂ Inicio</button>
+            <button class="nav-link" data-section="catalogo">▦ Explorar</button>
+            <button class="nav-link" data-section="subir">☁ Subir archivo</button>
+            <button class="nav-link" data-section="misarchivos">▰ Mis archivos</button>
+            <button class="nav-link" data-section="descargas">⇩ Descargas</button>
+            <button class="nav-link" data-section="arbol">🌳 Árbol</button>
+        </nav>
+
+        <div class="storage-card">
+            <span>Almacenamiento</span>
+            <div class="progress"><i id="storageBar"></i></div>
+            <small id="storageText">Calculando...</small>
+        </div>
+    </aside>
+
+    <main class="main">
+        <header class="topbar">
+            <form id="searchForm" class="search-form">
+                <div class="search-box">
+                    <span>🔍</span>
+                    <input id="searchInput" placeholder="Buscar archivos, películas, juegos..." autocomplete="off" />
+                </div>
+                <button class="primary search-btn" type="submit">Buscar</button>
+            </form>
+            <button id="themeToggle" class="theme-btn" type="button" title="Cambiar tema">☾</button>
+        </header>
+
+        <div id="searchResults" class="search-results hidden"></div>
+
+        <section id="inicio" class="view active">
+            <div class="hero">
+                <h1>¡Bienvenido! <span>👋</span></h1>
+                <p>Tu biblioteca personal para organizar, buscar y descargar archivos.</p>
+            </div>
+
+            <div class="category-grid" id="categoryCards"></div>
+
+
+            <div class="section-head">
+                <h2>Archivos destacados</h2>
+                <button class="ghost" data-section-open="catalogo">Ver todos</button>
+            </div>
+            <div class="cards-grid" id="featuredGrid"></div>
+        </section>
+
+        <section id="catalogo" class="view">
+            <div class="section-head">
+                <div>
+                    <h1>Explorar Archivos</h1>
+                    <p>Encuentra y abre el archivo que necesitas.</p>
+                </div>
+                <div class="filters">
+                    <select id="categoryFilter"><option value="Todos">Todas las categorías</option></select>
+                    <select id="sortFilter">
+                        <option value="recientes">Más recientes</option>
+                        <option value="nombre">Nombre</option>
+                        <option value="tamano">Tamaño</option>
+                    </select>
+                </div>
+            </div>
+            <div class="cards-grid catalog" id="catalogGrid"></div>
+        </section>
+
+        <section id="detalle" class="view">
+            <button class="back" data-section-open="catalogo">← Volver al catálogo</button>
+            <div id="detailBox" class="detail-card"></div>
+        </section>
+
+        <section id="subir" class="view">
+            <div class="upload-page">
+                <div class="upload-column upload-only">
+                    <h1>Subir archivo ZIP</h1>
+                    <p class="muted">Selecciona la categoría manualmente para que aparezca bien en el catálogo.</p>
+
+                    <form id="uploadForm" class="upload-panel">
+                        <label class="drop-zone" for="fileInput">
+                            <span>☁</span>
+                            <b>Arrastra o selecciona tu archivo ZIP</b>
+                            <small>Solo archivos .zip o .rar hasta 100 MB</small>
+                            <input type="file" id="fileInput" name="file" accept=".zip,.rar,application/zip,application/x-rar-compressed" hidden />
+                        </label>
+
+                        <div class="form-grid">
+                            <input id="uploadTitle" placeholder="Título visual opcional" />
+                            <select id="uploadCategory">
+                                <option>Programas</option>
+                                <option>Documentos</option>
+                                <option>Juegos</option>
+                                <option>Películas</option>
+                                <option>Imágenes</option>
+                                <option>Audio</option>
+                                <option>Otros</option>
+                            </select>
+                        </div>
+
+                        <textarea id="uploadDescription" placeholder="Descripción opcional"></textarea>
+                        <button class="primary" type="submit">☁ Subir archivo</button>
+                    </form>
+                </div>
+            </div>
+        </section>
+
+        <section id="misarchivos" class="view">
+            <div class="section-head">
+                <h1>Mis archivos</h1>
+                <button class="primary small" data-section-open="subir">+ Subir nuevo</button>
+            </div>
+            <div class="table-card">
+                <table>
+                    <thead>
+                        <tr><th>Nombre</th><th>Categoría</th><th>Tamaño</th><th>Fecha</th><th>Acciones</th></tr>
+                    </thead>
+                    <tbody id="filesTable"></tbody>
+                </table>
+            </div>
+        </section>
+
+        <section id="descargas" class="view">
+            <h1>Descargas</h1>
+            <p class="muted">Aquí se muestran los archivos agregados a la cola de descarga.</p>
+            <div class="downloads-panel" id="downloadQueue"></div>
+        </section>
+
+        <section id="arbol" class="view">
+            <div class="tree-only-wrap">
+                <div class="side-card tree-clean-card">
+                    <h1>Árbol de archivos</h1>
+                    <div id="miniTree" class="mini-tree"></div>
+                </div>
+
+                <div class="side-card tree-clean-card">
+                    <h1>Verificación</h1>
+                    <div class="verify-actions centered-actions">
+                        <button class="ghost" type="button" data-order="preorden">PreOrden</button>
+                        <button class="ghost" type="button" data-order="inorden">InOrden</button>
+                        <button class="ghost" type="button" data-order="postorden">PostOrden</button>
+                    </div>
+                    <div id="verifyResult" class="verify-result">Selecciona un recorrido.</div>
+                </div>
+            </div>
+        </section>
+
+    </main>
 </div>
+
+<div id="toast" class="toast"></div>
