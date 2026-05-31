@@ -24,6 +24,8 @@ public class ArchiveController : ControllerBase
 
     // 📤 SUBIR archivo (almacena en BD como BYTEA)
     [HttpPost("upload")]
+    [RequestSizeLimit(2147483647)]        // 2 GB
+    [RequestFormLimits(MultipartBodyLengthLimit = 2147483647)]
     public async Task<IActionResult> Upload(IFormFile file)
     {
         Check.FileUpload(file);
